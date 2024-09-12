@@ -1,14 +1,15 @@
 const db = require('../config/db');
 
 const addPus = (req, res) => {
-    const { num, type, usage, quota } = req.body;
+    const { numero, type, typeUsage, quota } = req.body;
 
-    if (!num || !type || !usage || !quota) {
+
+    if (!numero || !type || !typeUsage || !quota) {
         return res.status(400).send('All fields are required.');
     }
 
-    const query = 'INSERT INTO pus (num, type, usage, quota) VALUES (?, ?, ?, ?)';
-    const values = [num, type, usage, quota];
+    const query = 'INSERT INTO pus (number, type,usage_type, quota) VALUES (?, ?, ?, ?)';
+    const values = [numero, type, typeUsage, quota];
 
     db.query(query, values, (err, result) => {
         if (err) {
@@ -59,8 +60,7 @@ const getFilteredPus = (req, res) => {
 };
 
 const updatePus = (req, res) => {
-    const { id } = req.params;
-    const { number, type, usage, quota } = req.body;
+    const {id,number, type, usage, quota } = req.body;
 
     if (!number && !type && !usage && !quota) {
         return res.status(400).send('At least one field is required to update.');
@@ -69,7 +69,7 @@ const updatePus = (req, res) => {
     const fields = [];
     const values = [];
 
-    if (num) {
+    if (number) {
         fields.push('number = ?');
         values.push(number);
     }
@@ -102,19 +102,28 @@ const updatePus = (req, res) => {
 };
 
 const deletePus = (req, res) => {
-    const { id } = req.query;
-    const query = 'DELETE FROM pus WHERE id = ?';
+    const { ids } = req.body; 
 
-    db.query(query, [id], (err, result) => {
+   
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).send('A non-empty array of IDs is required to delete.');
+    }
+
+    
+    const query = 'DELETE FROM pus WHERE id IN (?)';
+
+    
+    db.query(query, [ids], (err, result) => {
         if (err) {
             console.log(err);
-            return res.status(500).json({ error: 'Failed to delete PUS record.' });
+            return res.status(500).json({ error: 'Database error occurred.' });
         }
         if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'PUS not found.' });
+            return res.status(404).json({ message: 'No PUS records found with the provided IDs.' });
         }
-        return res.status(200).json({ message: 'PUS deleted successfully.' });
+        return res.status(200).json({ message: 'PUS records deleted successfully!' });
     });
 };
+
 
 module.exports = {addPus, getAllPus, deletePus, updatePus , getFilteredPus };

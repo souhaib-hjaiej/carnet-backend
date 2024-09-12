@@ -17,7 +17,7 @@ app.use('/api', uploadRoutes);
 app.use('/user', userRoutes); 
 app.use('/employe', employeRoutes ); 
 app.use ('/pus', pusRoutes);
-//app.use ('/pusaffectation', pusaffectationRoutes)
+app.use ('/pusaffectation', pusaffectationRoutes)
 
 
 

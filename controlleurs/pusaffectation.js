@@ -1,54 +1,57 @@
 const db = require('../config/db');
 
-
-
-const affectation = (req, res) => {
-    const { number, type, usage_type, quota, idemp } = req.body;
+const addPUSafec = (req, res) => {
+    const { idempl, number, type, usage_type, quota } = req.body;
     console.log(req.body);
-    if (!number || !type || !usage_type || !quota || !idemp) {
-        return res.status(400).send('All fields are required.');
+
+    if (!idempl || !number || !type || !usage_type || !quota) {
+        return res.status(400).send("User ID and PU details are required");
     }
 
+    let errors = [];
 
-    const checkPusQuery = 'SELECT id FROM pus WHERE number = ?';
-
-
-    const insertPusQuery = 'INSERT INTO pus (number, type, usage_type, quota) VALUES (?, ?, ?, ?)';
-
-    
-    const insertPusAffectationQuery = 'INSERT INTO pus_affectation (employee_id, pus_id) VALUES (?, ?)';
-
-    
-    db.query(checkPusQuery, [number], (err, results) => {
+    const checkPUSQuery = 'SELECT id FROM pus WHERE number = ?';
+    db.query(checkPUSQuery, [number], (err, pusResults) => {
         if (err) {
-            return res.status(500).json({ error: 'Database error' });
+            console.log(err);
+            return res.status(500).send("Error checking PU");
         }
 
-        if (results.length > 0) {
-            const pusId = results[0].id;
+        if (pusResults.length > 0) {
+            const pusId = pusResults[0].id;
 
-            
-            db.query(insertPusAffectationQuery, [id, pusId], (err, result) => {
+            const checkPUSAffectionQuery = 'SELECT id FROM pus_affectation WHERE id_pus = ? AND active = true';
+            db.query(checkPUSAffectionQuery, [pusId], (err, affResults) => {
                 if (err) {
-                    return res.status(500).json({ error: 'Error inserting into pus_affectation' });
+                    console.log(err);
+                    return res.status(500).send("Error checking PU affection");
                 }
-                res.status(200).json({ message: 'PUS affectation successful' });
+
+                if (affResults.length === 0) {
+                    errors.push(`PU ${number} is not assigned`);
+                    return res.status(400).json({ errors });
+                } else {
+                    return res.status(200).send("PU already assigned and active");
+                }
             });
         } else {
-            
-            db.query(insertPusQuery, [number, type, usage_type, quota], (err, result) => {
+            // Insert new PU and assign it
+            const insertPUSQuery = 'INSERT INTO pus (number, type, usage_type, quota) VALUES (?, ?, ?, ?)';
+            db.query(insertPUSQuery, [number, type, usage_type, quota], (err, result) => {
                 if (err) {
-                    return res.status(500).json({ error: 'Error inserting into pus' });
+                    console.log(err);
+                    return res.status(500).send("Error inserting new PU");
                 }
 
-                const pusId = result.insertId; 
-
-             
-                db.query(insertPusAffectationQuery, [idemp, pusId], (err, result) => {
+                const pusId = result.insertId;
+                const insertPUSAffectionQuery = 'INSERT INTO pus_affectation (id_pus, id_empl, active) VALUES (?, ?, 1)';
+                db.query(insertPUSAffectionQuery, [pusId, idempl], (err) => {
                     if (err) {
-                        return res.status(500).json({ error: 'Error inserting into pus_affectation' });
+                        console.log(err);
+                        return res.status(500).send("Error assigning new PU");
                     }
-                    res.status(200).json({ message: 'PUS affectation successful' });
+
+                    return res.status(200).send("PU assigned successfully");
                 });
             });
         }
@@ -56,4 +59,9 @@ const affectation = (req, res) => {
 };
 
 
-module.exports = {affectation};
+
+
+  
+
+
+module.exports = {addPUSafec};
