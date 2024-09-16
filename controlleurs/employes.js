@@ -1,11 +1,25 @@
 const db = require('../config/db');
 
 const addempl = (req, res) => {
-    const { matricule, nom, prenom, societe, site, cin, pusAssignments } = req.body;
+    const { matricule, nom, prenom, societe, site, cin, pusAssignments, pus ,typeSIM } = req.body;
+    console.log(req.body);
     
-    if (!matricule || !nom || !prenom || !societe || !site || !cin || !pusAssignments || !Array.isArray(pusAssignments) || pusAssignments.length === 0) {
+    if (!matricule || !nom || !prenom || !societe || !site || !cin || !Array.isArray(pusAssignments)) {
         return res.status(400).send("All fields are required");
     }
+
+    // Add pus to pusAssignments if pus is provided and valid
+    if (pus && pus.number && pus.type && pus.usage_type && pus.quota) {
+        pusAssignments.push(pus);
+    }
+
+    // Check if pusAssignments is still empty after adding pus if necessary
+    if (pusAssignments.length === 0) {
+        return res.status(400).send("At least one PUS entry is required");
+    }
+
+    // Add typeSIM to societe if provided
+    const finalSociete = typeSIM ? `${societe} (${typeSIM})` : societe;
 
     const insertEmployeeQuery = 'INSERT INTO employees (matricule, nom, prenom, societe, site, cin) VALUES (?, ?, ?, ?, ?, ?)';
     const employeeValues = [matricule, nom, prenom, societe, site, cin];
@@ -26,6 +40,7 @@ const addempl = (req, res) => {
                 return callback(new Error('PUS entry is missing required fields'));
             }
 
+            // Check if the PUS exists in the 'pus' table
             const checkPUSQuery = 'SELECT id FROM pus WHERE number = ?';
             db.query(checkPUSQuery, [number], (err, results) => {
                 if (err) {
@@ -36,6 +51,7 @@ const addempl = (req, res) => {
                 if (results.length > 0) {
                     const pusId = results[0].id;
 
+                    // Now check if the PUS is assigned in the 'pus_affectation' table and active
                     const checkPUSAffectionQuery = 'SELECT id FROM pus_affectation WHERE id_pus = ? AND active = true';
                     db.query(checkPUSAffectionQuery, [pusId], (err, results) => {
                         if (err) {
@@ -44,23 +60,33 @@ const addempl = (req, res) => {
                         }
 
                         if (results.length > 0) {
-                            errors.push(`PUS ${number} is already assigned`);
+                            errors.push(`PUS ${number} is already assigned and active.`);
                             return callback();
                         }
 
-                        // Update: Set the active field to 1 in the insertion
-                        const insertPUSAssignmentQuery = 'INSERT INTO pus_affectation (id_pus, id_empl, active) VALUES (?, ?, 1)';
-                        db.query(insertPUSAssignmentQuery, [pusId, employeeId], (err) => {
+                        // If not active, update PUS values and assign it to the employee
+                        const updatePUSQuery = 'UPDATE pus SET type = ?, usage_type = ?, quota = ?, societe = ? WHERE id = ?';
+                        db.query(updatePUSQuery, [type, usage_type, quota, finalSociete, pusId], (err) => {
                             if (err) {
                                 console.log(err);
                                 return callback(err);
                             }
-                            callback();
+
+                            // Assign the updated PUS to the employee in 'pus_affectation' table with active = true
+                            const insertPUSAffectionQuery = 'INSERT INTO pus_affectation (id_pus, id_empl, active) VALUES (?, ?, 1)';
+                            db.query(insertPUSAffectionQuery, [pusId, employeeId], (err) => {
+                                if (err) {
+                                    console.log(err);
+                                    return callback(err);
+                                }
+                                callback();
+                            });
                         });
                     });
                 } else {
-                    const insertPUSQuery = 'INSERT INTO pus (number, type, usage_type, quota) VALUES (?, ?, ?, ?)';
-                    db.query(insertPUSQuery, [number, type, usage_type, quota], (err, result) => {
+                    // If the PUS does not exist in the 'pus' table, insert it as a new PUS
+                    const insertPUSQuery = 'INSERT INTO pus (number, type, usage_type, quota, societe) VALUES (?, ?, ?, ?, ?)';
+                    db.query(insertPUSQuery, [number, type, usage_type, quota, finalSociete], (err, result) => {
                         if (err) {
                             console.log(err);
                             return callback(err);
@@ -68,7 +94,7 @@ const addempl = (req, res) => {
 
                         const pusId = result.insertId; // Get the pusId from the INSERT result
                         
-                        // Update: Set the active field to 1 in the insertion
+                        // Insert the new PUS assignment in 'pus_affectation' with active = true
                         const insertPUSAffectionQuery = 'INSERT INTO pus_affectation (id_pus, id_empl, active) VALUES (?, ?, 1)';
                         db.query(insertPUSAffectionQuery, [pusId, employeeId], (err) => {
                             if (err) {
@@ -106,9 +132,10 @@ const addempl = (req, res) => {
 
 const allEmpl = (req, res) => {
     const query = `
-        SELECT employees.id, employees.matricule, employees.nom, employees.prenom, 
-               employees.cin, employees.site, employees.societe,
-               pus.id AS pus_id, pus.number, pus.type, pus.usage_type, pus.quota
+        SELECT employees.id, employees.matricule, employees.nom, employees.prenom,
+               employees.cin, employees.site, employees.societe,  -- Include societe here
+               pus.id AS pus_id, pus.number, pus.type, pus.usage_type, pus.quota, pus.societe AS pus_societe,
+               pus_affectation.active
         FROM employees
         LEFT JOIN pus_affectation ON employees.id = pus_affectation.id_empl
         LEFT JOIN pus ON pus_affectation.id_pus = pus.id;
@@ -119,34 +146,32 @@ const allEmpl = (req, res) => {
             console.log(error);
             return res.status(500).json({ error: 'Failed to retrieve data' });
         }
-        console.log(results);
-
-        // Group data by employee
         const groupedData = results.reduce((acc, row) => {
             const employeeId = row.id;
-
-            // Check if this employee already exists in the accumulator
             if (!acc[employeeId]) {
                 acc[employeeId] = {
                     id: row.id,
-                    matricule: row.matricule, // Add the matricule field here
+                    matricule: row.matricule,
                     nom: row.nom,
                     prenom: row.prenom,
                     cin: row.cin,
                     site: row.site,
-                    societe: row.societe,
-                    pus: [] // Initialize an empty array for the employee's PUS info
+                    societe: row.societe, // Add societe here
+                    pus: [] 
                 };
             }
 
-            // Add the PUS info to the employee's PUS array
-            acc[employeeId].pus.push({
-                pus_id: row.pus_id,
-                number: row.number,
-                type: row.type,
-                usage_type: row.usage_type,
-                quota: row.quota
-            });
+            // Add the PUS info to the employee's PUS array if active
+            if (row.active) {
+                acc[employeeId].pus.push({
+                    pus_id: row.pus_id,
+                    number: row.number,
+                    type: row.type,
+                    usage_type: row.usage_type,
+                    quota: row.quota,
+                    societe: row.pus_societe // Add societe to PUS info from pus table
+                });
+            }
 
             return acc;
         }, {});
@@ -157,6 +182,8 @@ const allEmpl = (req, res) => {
         res.status(200).json(employeesWithPus);
     });
 };
+
+
 
 
 
