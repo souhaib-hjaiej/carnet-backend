@@ -1,59 +1,67 @@
 const db = require('../config/db');
 
 const addPUSafec = (req, res) => {
-    const { idempl, number, type, usage_type, typeSIM, quota } = req.body; // Adjusted to match the new column name
-    console.log(req.body);
+    const { idempl, number, type, usage_type, typeSIM, quota } = req.body;
 
     if (!idempl || !number || !type || !usage_type || !typeSIM || !quota) {
-        return res.status(400).send("User ID and PU details are required");
+        return res.status(400).send("All PU and employee details are required.");
     }
 
-    let errors = [];
-
+    // Check if the PUS exists
     const checkPUSQuery = 'SELECT id FROM pus WHERE number = ?';
     db.query(checkPUSQuery, [number], (err, pusResults) => {
         if (err) {
-            console.log(err);
-            return res.status(500).send("Error checking PU");
+            console.error("Error checking PUS:", err);
+            return res.status(500).send("Internal server error while checking PU.");
         }
 
         if (pusResults.length > 0) {
             const pusId = pusResults[0].id;
 
+            // Check if the PUS is already assigned
             const checkPUSAffectionQuery = 'SELECT id FROM pus_affectation WHERE id_pus = ? AND active = true';
             db.query(checkPUSAffectionQuery, [pusId], (err, affResults) => {
                 if (err) {
-                    console.log(err);
-                    return res.status(500).send("Error checking PU affection");
+                    console.error("Error checking PUS assignment:", err);
+                    return res.status(500).send("Internal server error while checking PUS assignment.");
                 }
 
                 if (affResults.length === 0) {
-                    errors.push(`PU ${number} is not assigned`);
-                    return res.status(400).json({ errors });
+                    // PUS is not assigned, proceed with insertion
+                    const insertPUSAffectionQuery = 'INSERT INTO pus_affectation (id_pus, id_empl, active) VALUES (?, ?, 1)';
+                    db.query(insertPUSAffectionQuery, [pusId, idempl], (err) => {
+                        if (err) {
+                            console.error("Error assigning PUS:", err);
+                            return res.status(500).send("Error assigning new PU.");
+                        }
+
+                        return res.status(200).send("PU assigned successfully.");
+                    });
                 } else {
-                    return res.status(200).send("PU already assigned and active");
+                    // PUS is already assigned
+                    return res.status(400).json({ message: `PU ${number} is already assigned.` });
                 }
             });
         } else {
-            // Insert new PU with the `typeSIM` value added to `societe` column
+            // PUS does not exist, insert the new PUS
             const insertPUSQuery = 'INSERT INTO pus (number, type, usage_type, societe, quota) VALUES (?, ?, ?, ?, ?)';
             db.query(insertPUSQuery, [number, type, usage_type, typeSIM, quota], (err, result) => {
                 if (err) {
-                    console.log(err);
-                    return res.status(500).send("Error inserting new PU");
+                    console.error("Error inserting new PUS:", err);
+                    return res.status(500).send("Error inserting new PU.");
                 }
 
                 const pusId = result.insertId;
 
-                // Insert into pus_affectation
+                // Insert into pus_affectation after creating new PUS
                 const insertPUSAffectionQuery = 'INSERT INTO pus_affectation (id_pus, id_empl, active) VALUES (?, ?, 1)';
                 db.query(insertPUSAffectionQuery, [pusId, idempl], (err) => {
                     if (err) {
-                        console.log(err);
-                        return res.status(500).send("Error assigning new PU");
+                        console.error("Error assigning newly created PUS:", err);
+                        return res.status(500).send("Error assigning new PU.");
                     }
 
-                    return res.status(200).send("PU assigned successfully");
+                    return res.status(200).send("New PU created and assigned successfully.");
                 });
             });
         }

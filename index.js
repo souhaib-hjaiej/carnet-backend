@@ -5,6 +5,7 @@ const userRoutes = require('./routes/users');
 const pusRoutes = require('./routes/pus');
 const pusaffectationRoutes = require('./routes/pusaffectation');
 const employeRoutes = require('./routes/employes');
+const dashboard = require('./routes/dashboard');
 const db = require('./config/db'); 
 const app = express();
 
@@ -17,7 +18,9 @@ app.use('/api', uploadRoutes);
 app.use('/user', userRoutes); 
 app.use('/employe', employeRoutes ); 
 app.use ('/pus', pusRoutes);
-app.use ('/pusaffectation', pusaffectationRoutes)
+app.use ('/pusaffectation', pusaffectationRoutes);
+app.use ('/dashboard', dashboard);
+
 
 
 

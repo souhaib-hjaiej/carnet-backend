@@ -12,6 +12,7 @@ const secretKey = process.env.JWT_SECRET;
  const register = async (req, res) => {
   try {
     const { matricule, password, role, site, nom, prenom, societe } = req.body;
+    console.log(req.body);
 
     // Check if all required fields are provided
     if (!matricule || !password || !role || !site || !nom || !prenom || !societe) {
@@ -269,3 +270,6 @@ const deleteUsers = (req, res) => {
 
 
 module.exports = { login, register ,getUsers ,updateUser ,  deleteUsers };
+
+// Assuming Express.js and MySQL are being used
+
